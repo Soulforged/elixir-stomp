@@ -37,7 +37,7 @@ connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
 
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
 	Tcp=gen_tcp:connect(Host,PortNo,[{active, false}]),
-    case Tcp of
+    case (Tcp) of
         {ok, Sock} ->
             inet:setopts(Sock, [{recbuf,RecBuf}]),
         	gen_tcp:send(Sock,Message),
