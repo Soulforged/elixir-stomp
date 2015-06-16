@@ -48,8 +48,8 @@ connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
         		_-> throw("Error occured during connection attempt.")
         	end,
         	Sock;
-        {error, reason} ->
-            {error, reason}
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 
