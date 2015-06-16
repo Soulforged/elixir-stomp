@@ -1,9 +1,9 @@
-%% Module for client support of the STOMP messaging protocol (http://stomp.codehaus.org/Protocol). 
+%% Module for client support of the STOMP messaging protocol (http://stomp.codehaus.org/Protocol).
 %% Version 0.1
 %% Authored by Ian Brown (spam@hccp.org)
 %% Documentation can be found at http://www.hccp.org/erlang-stomp-client.html
-%% This was an experiment to get a feel for the Erlang language, and provide simple client access to STOMP suppurting message brokers.  
-%% Please feel free to use and re-distribute as you see fit. Comments, improvements and questions welcome. 
+%% This was an experiment to get a feel for the Erlang language, and provide simple client access to STOMP suppurting message brokers.
+%% Please feel free to use and re-distribute as you see fit. Comments, improvements and questions welcome.
 
 -module (stomp).
 -export ([connect/4]). %% "You sunk my scrabbleship!"
@@ -36,16 +36,22 @@ connect (Host, PortNo, Login, Passcode, Options)  ->
 connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
 
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
-	{ok,Sock}=gen_tcp:connect(Host,PortNo,[{active, false}]),
-        inet:setopts(Sock, [{recbuf,RecBuf}]),
-	gen_tcp:send(Sock,Message),
-	{ok, Response}=gen_tcp:recv(Sock, 0),
-	[{type, Type}, _, _, _]=get_message(Response), %%UGLY!
-	case (Type) of 
-		"CONNECTED" -> Sock;
-		_-> throw("Error occured during connection attempt.")
-	end,
-	Sock.
+	Tcp=gen_tcp:connect(Host,PortNo,[{active, false}]),
+    case Tcp of
+        {ok, Sock} ->
+            inet:setopts(Sock, [{recbuf,RecBuf}]),
+        	gen_tcp:send(Sock,Message),
+        	{ok, Response}=gen_tcp:recv(Sock, 0),
+        	[{type, Type}, _, _, _]=get_message(Response), %%UGLY!
+        	case (Type) of
+        		"CONNECTED" -> Sock;
+        		_-> throw("Error occured during connection attempt.")
+        	end,
+        	Sock;
+        {error, reason} ->
+            {error, reason}
+    end.
+
 
 
 %% Example: stomp:subscribe("/queue/foobar", Conn).
@@ -62,22 +68,22 @@ subscribe (Destination, Connection, Options) ->
 	Message=lists:append(["SUBSCRIBE", "\ndestination: ", Destination, concatenate_options(Options), "\n\n", [0]]),
 	gen_tcp:send(Connection,Message),
 	ok.
-	
+
 
 %% Example: stomp:unsubscribe("/queue/foobar", Conn).
-	
+
 unsubscribe (Destination, Connection) ->
 	Message=lists:append(["UNSUBSCRIBE", "\ndestination: ", Destination, "\n\n", [0]]),
 	gen_tcp:send(Connection,Message),
-	ok.	
-	
+	ok.
+
 %% Example: stomp:disconnect(Conn).
-	
+
 disconnect (Connection) ->
 	Message=lists:append(["DISCONNECT", "\n\n", [0]]),
 	gen_tcp:send(Connection,Message),
 	gen_tcp:close(Connection),
-	ok.	
+	ok.
 
 %% Example: stomp:get_message_id(Message).
 
@@ -90,11 +96,11 @@ get_message_id ([H|T]) ->
 	end;
 get_message_id ([])	->
 	throw("No header with name of 'message-id' was found.").
-	
-	
-	
-	
-	
+
+
+
+
+
 %% Example: stomp:ack(Conn, Message).
 %% Example: stomp:ack(Conn, stomp:get_message_id(Message)).
 %% Example: stomp:ack(Conn, "ID:phosphorus-63844-1247442885553-3:1:1:1:1").
@@ -123,30 +129,30 @@ ack (Connection, MessageId, TransactionId)	->
 
 %% Example: stomp:send(Conn, "/queue/foobar", [], "hello world").
 %% Example: stomp:send(Conn, "/queue/foobar", [{"priority","15"}], "high priority hello world").
-	
+
 send (Connection, Destination, Headers, MessageBody) ->
 	Message=lists:append(["SEND", "\ndestination: ", Destination, concatenate_options(Headers), "\n\n", MessageBody, [0]]),
 	gen_tcp:send(Connection,Message),
 	ok.
-		
-		
-	
-	
+
+
+
+
 
 %% Example: stomp:get_messages(Conn).
 
 get_messages (Connection) ->
 	get_messages (Connection, []).
-	
+
 get_messages (Connection, Messages) ->
 	Response=do_recv(Connection),
 	get_messages(Connection, Messages, Response).
-		
+
 get_messages (_, Messages, []) ->
 	Messages;
 get_messages (Connection, Messages, Response) ->
 			[{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest]=get_message(Response),
-			
+
 			get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest)).
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
@@ -157,7 +163,7 @@ get_rest(TheRest)->
 	[]->[];
         [_|T]->T
     end.
-	       
+
 
 do_recv(Connection)->
     do_recv(Connection,[]).
@@ -196,21 +202,21 @@ begin_transaction (Connection, TransactionId) ->
 
 
 %% Example: stomp:commit_transaction(Conn, "MyUniqueTransactionIdBlahBlahBlah1234567890").
-	
+
 commit_transaction (Connection, TransactionId) ->
 	Message=lists:append(["COMMIT", "\ntransaction: ", TransactionId, "\n\n", [0]]),
 	gen_tcp:send(Connection,Message),
 	ok.
-		
+
 
 %% Example: stomp:abort_transaction(Conn, "MyUniqueTransactionIdBlahBlahBlah1234567890").
 
 abort_transaction (Connection, TransactionId) ->
 	Message=lists:append(["ABORT", "\ntransaction: ", TransactionId, "\n\n", [0]]),
 	gen_tcp:send(Connection,Message),
-	ok.			
+	ok.
 
-%% PRIVATE METHODS . . .	
+%% PRIVATE METHODS . . .
 concatenate_options ([]) ->
 	[];
 concatenate_options ([H|T]) ->
@@ -232,7 +238,7 @@ apply_function_to_messages(F, [H|T], Conn) ->
 % MESSAGE PARSING  . . . get's a little ugly in here . . . would help if I truly grokked Erlang, I suspect.
 % 7/12/09 - yeah, ugly indeed, i need to make this use the same pattern as get_headers_from_raw_src . . . currently scanning header block multiple times and making unnecessary copies
 get_message(Message) ->
-   
+
  	[Type, {Headers, MessageBody}, TheRest]=get_type(Message), %% Ugly . . .
 
 	{ParsedHeaders, _}=get_headers_from_raw_src([], Headers),
@@ -241,7 +247,7 @@ get_message(Message) ->
 
 
 
-	
+
 %% extract message body
 get_message_body ([H|T]) ->
                 %% io:write([H|T]),
@@ -256,7 +262,7 @@ get_message_body ([H|T], MessageBody) ->
 	case(H) of
 		0 -> {MessageBody, T};
 		_ -> {MyMessageBody, TheRest}=get_message_body(T, MessageBody), {lists:append([MessageBody, [H], MyMessageBody]), TheRest}
-	end;	
+	end;
 get_message_body ([],[]) ->
     {[],[]}.
 
@@ -274,21 +280,21 @@ get_headers ([H|T], Headers, LastChar) ->
 		{10, 10} -> {MessageBody, TheRest}=get_message_body(T),[{Headers, MessageBody}, TheRest];
 		{_, _} -> get_headers(T, lists:append([Headers, [H]]), H)
 	end.
-	
-	
-	
-%% extract type ("MESSAGE", "CONNECT", etc.) from message string . . .	
+
+
+
+%% extract type ("MESSAGE", "CONNECT", etc.) from message string . . .
 
 get_type(Message) ->
 	get_type (Message, []).
 
 get_type ([], Type) ->
 	Type;
-get_type ([H|T], Type) ->	
+get_type ([H|T], Type) ->
 	case (H) of
 		10 -> [{Headers, MessageBody}, TheRest]=get_headers(T), [Type, {Headers, MessageBody}, TheRest];
-		_ -> get_type(T, lists:append([Type, [H]]))	
-	end.	
+		_ -> get_type(T, lists:append([Type, [H]]))
+	end.
 
 
 %% parse header clob into list of tuples . . .
@@ -302,19 +308,16 @@ get_header (RawSrc) ->
 	{HeaderName, RestOfListAfterHeaderExtraction}=get_header_name([], RawSrc),
 	{HeaderValue, RestOfListAfterValueExtraction}=get_header_value([], RestOfListAfterHeaderExtraction),
 	{{HeaderName, HeaderValue}, RestOfListAfterValueExtraction}.
-	
-	
+
+
 get_header_name (HeaderName, [H|T]) ->
-		case (H) of 
+		case (H) of
 			58 ->  {HeaderName, T};
 			_ -> get_header_name(lists:append([HeaderName, [H]]), T)
 		end.
-	
+
 get_header_value (HeaderValue, [H|T]) ->
-		case (H) of 
+		case (H) of
 			10 -> {HeaderValue, T};
 			_ -> get_header_value(lists:append([HeaderValue, [H]]), T)
-			end.	
-
-
-
+			end.
