@@ -45,9 +45,8 @@ connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
         	[{type, Type}, _, _, _]=get_message(Response), %%UGLY!
         	case (Type) of
         		"CONNECTED" -> Sock;
-        		_-> throw("Error occured during connection attempt.")
-        	end,
-        	Sock;
+        		_-> {error, "Error occured during connection attempt." ++ Type}
+        	end;
         {error, Reason} ->
             {error, Reason}
     end.
