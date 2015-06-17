@@ -42,10 +42,12 @@ connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
             inet:setopts(Sock, [{recbuf,RecBuf}]),
         	gen_tcp:send(Sock,Message),
         	{ok, Response}=gen_tcp:recv(Sock, 0),
-        	[{type, Type}, _, _, _]=get_message(Response), %%UGLY!
+        	[{type, Type}, Headers, _, _]=get_message(Response), %%UGLY!
         	case (Type) of
         		"CONNECTED" -> Sock;
-        		_-> {error, "Error occured during connection attempt." ++ Type}
+        		_->
+                    {headers, [_, {"message", Msg}]} = Headers,
+                    {error, "Error occured during connection attempt. " ++ Msg}
         	end;
         {error, Reason} ->
             {error, Reason}
