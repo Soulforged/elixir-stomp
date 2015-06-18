@@ -14,6 +14,7 @@
 -export ([subscribe/3]).
 -export ([unsubscribe/2]).
 -export ([get_messages/1]).
+-export ([get_messages/2]).
 -export ([get_message_id/1]).
 -export ([ack/2]).
 -export ([ack/3]).
@@ -34,26 +35,29 @@ connect (Host, PortNo, Login, Passcode, Options)  ->
     connect(Host, PortNo, Login, Passcode, Options, 1024).
 
 connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
-
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
 	Tcp=gen_tcp:connect(Host,PortNo,[{active, false}]),
-    case (Tcp) of
-        {ok, Sock} ->
-            inet:setopts(Sock, [{recbuf,RecBuf}]),
-        	gen_tcp:send(Sock,Message),
-        	{ok, Response}=gen_tcp:recv(Sock, 0),
-        	[{type, Type}, Headers, _, _]=get_message(Response), %%UGLY!
-        	case (Type) of
-        		"CONNECTED" -> Sock;
-        		_->
-                    {headers, [_, {"message", Msg}]} = Headers,
-                    {error, "Error occured during connection attempt. " ++ Msg}
-        	end;
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    handle_tcp(Tcp, RecBuf, Message).
 
+handle_tcp({ok, Sock}, RecBuf, Message) ->
+    inet:setopts(Sock, [{recbuf,RecBuf}]),
+    gen_tcp:send(Sock,Message),
+    {ok, Response}=gen_tcp:recv(Sock, 0),
+    M = get_message(Response),
+    handle_message(M, Sock); %%UGLY!
+handle_tcp(Error, _, _) ->
+    Error.
 
+handle_message([{type, Type}, Headers, _, _], Sock) ->
+    case (Type) of
+        "CONNECTED" ->
+            Sock;
+        _->
+            {headers, [_, {"message", Msg}]} = Headers,
+            {error, "Error occured during connection attempt. " ++ Msg}
+    end;
+handle_message(Error, _) ->
+    Error.
 
 %% Example: stomp:subscribe("/queue/foobar", Conn).
 
@@ -143,18 +147,24 @@ send (Connection, Destination, Headers, MessageBody) ->
 %% Example: stomp:get_messages(Conn).
 
 get_messages (Connection) ->
-	get_messages (Connection, []).
+	get_messages (Connection, 20000).
 
-get_messages (Connection, Messages) ->
-	Response=do_recv(Connection),
-	get_messages(Connection, Messages, Response).
+get_messages (Connection, Timeout) ->
+	get_messages (Connection, [], Timeout).
 
-get_messages (_, Messages, []) ->
+get_messages (Connection, Messages, Timeout) ->
+	Response=do_recv(Connection, Timeout),
+    do_get_messages(Connection, Messages, Response).
+
+do_get_messages (_, Messages, []) ->
 	Messages;
-get_messages (Connection, Messages, Response) ->
-			[{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest]=get_message(Response),
+do_get_messages (Connection, Messages, Response) ->
+	handle_messages(get_message(Response), Connection, Messages).
 
-			get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest)).
+handle_messages([{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages) ->
+    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest));
+handle_messages(Error, _, _) ->
+    Error.
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
 %% 6/24/11 I think the rest is when more than one message is retrived at at given time...in any case, looks like large messages are sometimes missing an expected terminationg 0 char?
@@ -166,14 +176,17 @@ get_rest(TheRest)->
     end.
 
 
-do_recv(Connection)->
-    do_recv(Connection,[]).
+do_recv(Connection, Timeout)->
+    do_recv(Connection,[], Timeout).
 
-do_recv(Connection, [])->
-    {ok, Response}=gen_tcp:recv(Connection, 0),
-    do_recv(Connection, Response);
-do_recv(Connection, Response)->
-    {Status, Data}=gen_tcp:recv(Connection, 0, 1000),
+do_recv(Connection, [], Timeout)->
+    Response=gen_tcp:recv(Connection, 0, Timeout),
+    case Response of
+        {error, _} -> Response;
+        _ -> do_recv(Connection, Response)
+    end;
+do_recv(Connection, Response, Timeout)->
+    {Status, Data}=gen_tcp:recv(Connection, 0, Timeout),
     case Status of
 	ok->
 	    do_recv(Connection, lists:flatten([Response, Data]));
@@ -239,14 +252,13 @@ apply_function_to_messages(F, [H|T], Conn) ->
 % MESSAGE PARSING  . . . get's a little ugly in here . . . would help if I truly grokked Erlang, I suspect.
 % 7/12/09 - yeah, ugly indeed, i need to make this use the same pattern as get_headers_from_raw_src . . . currently scanning header block multiple times and making unnecessary copies
 get_message(Message) ->
-
- 	[Type, {Headers, MessageBody}, TheRest]=get_type(Message), %% Ugly . . .
-
-	{ParsedHeaders, _}=get_headers_from_raw_src([], Headers),
-	[{type, Type}, {headers, ParsedHeaders}, {body, MessageBody}, TheRest].
-
-
-
+    T = get_type(Message),
+    case (T) of
+        [Type, {Headers, MessageBody}, TheRest] -> %% Ugly . . .
+            {ParsedHeaders, _}=get_headers_from_raw_src([], Headers),
+        	[{type, Type}, {headers, ParsedHeaders}, {body, MessageBody}, TheRest];
+        _ -> T
+    end.
 
 
 %% extract message body
@@ -295,7 +307,9 @@ get_type ([H|T], Type) ->
 	case (H) of
 		10 -> [{Headers, MessageBody}, TheRest]=get_headers(T), [Type, {Headers, MessageBody}, TheRest];
 		_ -> get_type(T, lists:append([Type, [H]]))
-	end.
+	end;
+get_type (Error, _) ->
+    Error.
 
 
 %% parse header clob into list of tuples . . .
