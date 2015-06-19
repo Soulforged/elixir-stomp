@@ -140,57 +140,48 @@ send (Connection, Destination, Headers, MessageBody) ->
 	gen_tcp:send(Connection,Message),
 	ok.
 
-
-
-
-
 %% Example: stomp:get_messages(Conn).
 
 get_messages (Connection) ->
-	get_messages (Connection, 20000).
+	get_messages (Connection, 1000).
 
 get_messages (Connection, Timeout) ->
 	get_messages (Connection, [], Timeout).
 
 get_messages (Connection, Messages, Timeout) ->
 	Response=do_recv(Connection, Timeout),
-    do_get_messages(Connection, Messages, Response).
+    get_messages(Connection, Messages, Response, Timeout).
 
-do_get_messages (_, Messages, []) ->
+get_messages (_, Messages, [], _) ->
 	Messages;
-do_get_messages (Connection, Messages, Response) ->
-	handle_messages(get_message(Response), Connection, Messages).
-
-handle_messages([{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages) ->
-    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest));
-handle_messages(Error, _, _) ->
-    Error.
+get_messages (Connection, Messages, Response, Timeout) ->
+    [{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest]=get_message(Response),
+    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout).
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
 %% 6/24/11 I think the rest is when more than one message is retrived at at given time...in any case, looks like large messages are sometimes missing an expected terminationg 0 char?
 %% 6/24/11 ahh...the actual issue is when the message exceeds the read window size, we don't have the entire message...so it looks like it is not terminated beacuse it is not yet terminated
-get_rest(TheRest)->
-    case TheRest of
-	[]->[];
-        [_|T]->T
-    end.
-
+get_rest([])->
+    [];
+get_rest([_|TheRest])->
+    TheRest.
 
 do_recv(Connection, Timeout)->
-    do_recv(Connection,[], Timeout).
+    do_recv(Connection, [], Timeout).
 
 do_recv(Connection, [], Timeout)->
-    Response=gen_tcp:recv(Connection, 0, Timeout),
-    case Response of
-        {error, _} -> Response;
-        _ -> do_recv(Connection, Response)
-    end;
-do_recv(Connection, Response, Timeout)->
     {Status, Data}=gen_tcp:recv(Connection, 0, Timeout),
-    case Status of
-	ok->
-	    do_recv(Connection, lists:flatten([Response, Data]));
-	error -> Response
+    do_recv(Connection, Data, Timeout);
+do_recv(Connection, Response, Timeout)->
+    R=gen_tcp:recv(Connection, 0, Timeout),
+    case R of
+    	{ok, Data}->
+            Val = lists:member(0, Data),
+            case Val of
+                true -> lists:flatten([Response, Data]);
+                _ -> do_recv(Connection, lists:flatten([Response, Data]), Timeout)
+            end;
+    	{error, _} -> Response
     end.
 
 %% Example: MyFunction=fun([_, _, {_, X}]) -> io:fwrite("message ~s ~n", [X]) end, stomp:on_message(MyFunction, Conn).
@@ -200,12 +191,10 @@ on_message (F, Conn) ->
 	apply_function_to_messages(F, Messages),
 	on_message(F, Conn).
 
-
 on_message_with_conn (F, Conn) ->
 	Messages=get_messages(Conn),
 	apply_function_to_messages(F, Messages, Conn),
 	on_message_with_conn(F, Conn).
-
 
 %% Example: stomp:begin_transaction(Conn, "MyUniqueTransactionIdBlahBlahBlah1234567890").
 
@@ -213,7 +202,6 @@ begin_transaction (Connection, TransactionId) ->
 	Message=lists:append(["BEGIN", "\ntransaction: ", TransactionId, "\n\n", [0]]),
 	gen_tcp:send(Connection,Message),
 	ok.
-
 
 %% Example: stomp:commit_transaction(Conn, "MyUniqueTransactionIdBlahBlahBlah1234567890").
 
@@ -252,29 +240,20 @@ apply_function_to_messages(F, [H|T], Conn) ->
 % MESSAGE PARSING  . . . get's a little ugly in here . . . would help if I truly grokked Erlang, I suspect.
 % 7/12/09 - yeah, ugly indeed, i need to make this use the same pattern as get_headers_from_raw_src . . . currently scanning header block multiple times and making unnecessary copies
 get_message(Message) ->
-    T = get_type(Message),
-    case (T) of
-        [Type, {Headers, MessageBody}, TheRest] -> %% Ugly . . .
-            {ParsedHeaders, _}=get_headers_from_raw_src([], Headers),
-        	[{type, Type}, {headers, ParsedHeaders}, {body, MessageBody}, TheRest];
-        _ -> T
-    end.
-
+    [Type, {Headers, MessageBody}, TheRest]=get_type(Message), %% Ugly . . .
+    {ParsedHeaders, _}=get_headers_from_raw_src([], Headers),
+    [{type, Type}, {headers, ParsedHeaders}, {body, MessageBody}, TheRest].
 
 %% extract message body
 get_message_body ([H|T]) ->
-                %% io:write([H|T]),
-                %% io:fwrite("~n",[]),
-                %% io:write(H),
-		get_message_body ([H|T], []).
+    get_message_body ([H|T], []).
 
 get_message_body ([H|T], MessageBody) ->
-             %%io:fwrite("~n",[]),
-             %%io:fwrite("In get msg body/2 ~n",[]),
-             %%io:write([H|T]),
 	case(H) of
 		0 -> {MessageBody, T};
-		_ -> {MyMessageBody, TheRest}=get_message_body(T, MessageBody), {lists:append([MessageBody, [H], MyMessageBody]), TheRest}
+		_ ->
+            {MyMessageBody, TheRest}=get_message_body(T, MessageBody),
+            {lists:append([MessageBody, [H], MyMessageBody]), TheRest}
 	end;
 get_message_body ([],[]) ->
     {[],[]}.
@@ -290,7 +269,9 @@ get_headers (Message, Headers) ->
 	get_headers (Message, Headers, -1).
 get_headers ([H|T], Headers, LastChar) ->
 	case ({H, LastChar}) of
-		{10, 10} -> {MessageBody, TheRest}=get_message_body(T),[{Headers, MessageBody}, TheRest];
+		{10, 10} ->
+            {MessageBody, TheRest}=get_message_body(T),
+            [{Headers, MessageBody}, TheRest];
 		{_, _} -> get_headers(T, lists:append([Headers, [H]]), H)
 	end.
 
@@ -307,9 +288,7 @@ get_type ([H|T], Type) ->
 	case (H) of
 		10 -> [{Headers, MessageBody}, TheRest]=get_headers(T), [Type, {Headers, MessageBody}, TheRest];
 		_ -> get_type(T, lists:append([Type, [H]]))
-	end;
-get_type (Error, _) ->
-    Error.
+	end.
 
 
 %% parse header clob into list of tuples . . .
