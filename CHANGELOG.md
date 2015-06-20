@@ -1,3 +1,6 @@
+### 0.0.3
+* Handle some timeout and empty header/body cases properly.
+
 ### 0.0.2
 * Add TCP and STOMP error handling with proper gen server protocol.
 
