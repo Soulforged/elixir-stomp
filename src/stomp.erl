@@ -102,10 +102,6 @@ get_message_id ([H|T]) ->
 get_message_id ([])	->
 	throw("No header with name of 'message-id' was found.").
 
-
-
-
-
 %% Example: stomp:ack(Conn, Message).
 %% Example: stomp:ack(Conn, stomp:get_message_id(Message)).
 %% Example: stomp:ack(Conn, "ID:phosphorus-63844-1247442885553-3:1:1:1:1").
@@ -117,8 +113,6 @@ ack (Connection, MessageId)	->
 	AckMessage=lists:append(["ACK", "\nmessage-id: ", MessageId, "\n\n", [0]]),
 	gen_tcp:send(Connection,AckMessage),
 	ok.
-
-
 
 %% Example: stomp:ack(Conn, Message, TransactionId).
 %% Example: stomp:ack(Conn, stomp:get_message_id(Message), TransactionId).
@@ -155,8 +149,13 @@ get_messages (Connection, Messages, Timeout) ->
 get_messages (_, Messages, [], _) ->
 	Messages;
 get_messages (Connection, Messages, Response, Timeout) ->
-    [{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest]=get_message(Response),
-    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout).
+    M = get_message(Response),
+    handle_message(M, Connection, Messages, Timeout).
+
+handle_message([{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
+    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
+handle_message(Error,_, _, _) ->
+    {error, Error}.
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
 %% 6/24/11 I think the rest is when more than one message is retrived at at given time...in any case, looks like large messages are sometimes missing an expected terminationg 0 char?
@@ -240,9 +239,13 @@ apply_function_to_messages(F, [H|T], Conn) ->
 % MESSAGE PARSING  . . . get's a little ugly in here . . . would help if I truly grokked Erlang, I suspect.
 % 7/12/09 - yeah, ugly indeed, i need to make this use the same pattern as get_headers_from_raw_src . . . currently scanning header block multiple times and making unnecessary copies
 get_message(Message) ->
-    [Type, {Headers, MessageBody}, TheRest]=get_type(Message), %% Ugly . . .
+    handle_type(get_type(Message)). %% Ugly . . .
+
+handle_type([Type, {Headers, MessageBody}, TheRest]) ->
     {ParsedHeaders, _}=get_headers_from_raw_src([], Headers),
-    [{type, Type}, {headers, ParsedHeaders}, {body, MessageBody}, TheRest].
+    [{type, Type}, {headers, ParsedHeaders}, {body, MessageBody}, TheRest];
+handle_type(Error) ->
+    Error.
 
 %% extract message body
 get_message_body ([H|T]) ->
@@ -273,9 +276,9 @@ get_headers ([H|T], Headers, LastChar) ->
             {MessageBody, TheRest}=get_message_body(T),
             [{Headers, MessageBody}, TheRest];
 		{_, _} -> get_headers(T, lists:append([Headers, [H]]), H)
-	end.
-
-
+	end;
+get_headers ([], Headers, _) ->
+    [{Headers, []}, []].
 
 %% extract type ("MESSAGE", "CONNECT", etc.) from message string . . .
 
@@ -288,8 +291,9 @@ get_type ([H|T], Type) ->
 	case (H) of
 		10 -> [{Headers, MessageBody}, TheRest]=get_headers(T), [Type, {Headers, MessageBody}, TheRest];
 		_ -> get_type(T, lists:append([Type, [H]]))
-	end.
-
+	end;
+get_type (Error, _) ->
+    Error.
 
 %% parse header clob into list of tuples . . .
 get_headers_from_raw_src (Headers, []) ->
@@ -305,13 +309,17 @@ get_header (RawSrc) ->
 
 
 get_header_name (HeaderName, [H|T]) ->
-		case (H) of
-			58 ->  {HeaderName, T};
-			_ -> get_header_name(lists:append([HeaderName, [H]]), T)
-		end.
+	case (H) of
+		58 ->  {HeaderName, T};
+		_ -> get_header_name(lists:append([HeaderName, [H]]), T)
+	end;
+get_header_name (HeaderName, []) ->
+    {HeaderName, []}.
 
 get_header_value (HeaderValue, [H|T]) ->
-		case (H) of
-			10 -> {HeaderValue, T};
-			_ -> get_header_value(lists:append([HeaderValue, [H]]), T)
-			end.
+	case (H) of
+		10 -> {HeaderValue, T};
+		_ -> get_header_value(lists:append([HeaderValue, [H]]), T)
+	end;
+get_header_value (HeaderValue, []) ->
+    {HeaderValue, []}.
