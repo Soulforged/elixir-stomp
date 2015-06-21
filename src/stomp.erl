@@ -169,8 +169,11 @@ do_recv(Connection, Timeout)->
     do_recv(Connection, [], Timeout).
 
 do_recv(Connection, [], Timeout)->
-    {ok, Data} = gen_tcp:recv(Connection, 0, Timeout),
-    do_recv(Connection, Data, Timeout);
+    Result = gen_tcp:recv(Connection, 0, Timeout),
+    case Result of
+        { error, _ } -> Result;
+        { ok, Data } -> do_recv(Connection, Data, Timeout)
+    end;
 do_recv(Connection, Response, Timeout)->
     R = gen_tcp:recv(Connection, 0, Timeout),
     case R of
