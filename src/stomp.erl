@@ -143,7 +143,7 @@ get_messages (Connection, Timeout) ->
 	get_messages (Connection, [], Timeout).
 
 get_messages (Connection, Messages, Timeout) ->
-	Response=do_recv(Connection, Timeout),
+	Response = do_recv(Connection, Timeout),
     get_messages(Connection, Messages, Response, Timeout).
 
 get_messages (_, Messages, [], _) ->
@@ -169,10 +169,10 @@ do_recv(Connection, Timeout)->
     do_recv(Connection, [], Timeout).
 
 do_recv(Connection, [], Timeout)->
-    {Status, Data}=gen_tcp:recv(Connection, 0, Timeout),
+    {ok, Data} = gen_tcp:recv(Connection, 0, Timeout),
     do_recv(Connection, Data, Timeout);
 do_recv(Connection, Response, Timeout)->
-    R=gen_tcp:recv(Connection, 0, Timeout),
+    R = gen_tcp:recv(Connection, 0, Timeout),
     case R of
     	{ok, Data}->
             Val = lists:member(0, Data),
