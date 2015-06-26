@@ -1,3 +1,6 @@
+### 0.0.4
+* Add some more error handling, and remove others. Fix styling.
+
 ### 0.0.3
 * Handle some timeout and empty header/body cases properly.
 

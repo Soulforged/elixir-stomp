@@ -1,4 +1,4 @@
-#A Stomp client written in Erlang  
+#A Stomp client written in Erlang and wrapped in Elixir 
   
 ####Check the [Wiki](https://github.com/KodiEhf/erlang-stomp-client/wiki/erlang-stomp-client-wiki) for more info or go straight to the the [API docs](http://kodiehf.github.com/erlang-stomp-client/).  
   
