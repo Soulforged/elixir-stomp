@@ -29,10 +29,10 @@
 
 
 connect (Host, PortNo, Login, Passcode)  ->
-    connect(Host, PortNo, Login, Passcode, [], 1024).
+    connect(Host, PortNo, Login, Passcode, []).
 
 connect (Host, PortNo, Login, Passcode, Options)  ->
-    connect(Host, PortNo, Login, Passcode, Options, 1024).
+    connect(Host, PortNo, Login, Passcode, Options, 65536).
 
 connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
@@ -45,7 +45,7 @@ handle_tcp({ok, Sock}, RecBuf, Message) ->
     {ok, Response}=gen_tcp:recv(Sock, 0),
     M = get_message(Response),
     handle_message(M, Sock); %%UGLY!
-handle_tcp(Error, _, _) ->
+handle_tcp(Error,_, _) ->
     Error.
 
 handle_message([{type, Type}, Headers, _, _], Sock) ->
@@ -168,12 +168,6 @@ get_rest([_|TheRest])->
 do_recv(Connection, Timeout)->
     do_recv(Connection, [], Timeout).
 
-do_recv(Connection, [], Timeout)->
-    Result = gen_tcp:recv(Connection, 0, Timeout),
-    case Result of
-        { error, Error } -> Error;
-        { ok, Data } -> do_recv(Connection, Data, Timeout)
-    end;
 do_recv(Connection, Response, Timeout)->
     R = gen_tcp:recv(Connection, 0, Timeout),
     case R of
