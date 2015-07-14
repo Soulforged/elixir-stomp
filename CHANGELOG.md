@@ -1,3 +1,6 @@
+### 0.0.5
+* Increase receiver buffer to a more standard initial capacity (65536)
+
 ### 0.0.4
 * Add some more error handling, and remove others. Fix styling.
 
