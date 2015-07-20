@@ -5,7 +5,7 @@
 %% This was an experiment to get a feel for the Erlang language, and provide simple client access to STOMP suppurting message brokers.
 %% Please feel free to use and re-distribute as you see fit. Comments, improvements and questions welcome.
 
--module (stomp).
+-module (stomp_ssl).
 -export ([connect/4]). %% "You sunk my scrabbleship!"
 -export ([connect/5]).
 -export ([connect/6]).
@@ -34,13 +34,13 @@ connect (Host, PortNo, Login, Passcode, Options)  ->
 
 connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
-	Tcp=gen_tcp:connect(Host,PortNo,[{active, false}]),
+	Tcp=ssl:connect(Host,PortNo,[{active, false}]),
     handle_tcp(Tcp, RecBuf, Message).
 
 handle_tcp({ok, Sock}, RecBuf, Message) ->
     inet:setopts(Sock, [{recbuf,RecBuf}]),
-    gen_tcp:send(Sock,Message),
-    {ok, Response}=gen_tcp:recv(Sock, 0),
+    ssl:send(Sock,Message),
+    {ok, Response}=ssl:recv(Sock, 0),
     M = get_message(Response),
     handle_message(M, Sock); %%UGLY!
 handle_tcp(Error,_, _) ->
@@ -69,7 +69,7 @@ subscribe (Destination, Connection) ->
 
 subscribe (Destination, Connection, Options) ->
 	Message=lists:append(["SUBSCRIBE", "\ndestination: ", Destination, concatenate_options(Options), "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+	ssl:send(Connection,Message),
 	ok.
 
 
@@ -77,15 +77,15 @@ subscribe (Destination, Connection, Options) ->
 
 unsubscribe (Destination, Connection) ->
 	Message=lists:append(["UNSUBSCRIBE", "\ndestination: ", Destination, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+	ssl:send(Connection,Message),
 	ok.
 
 %% Example: stomp:disconnect(Conn).
 
 disconnect (Connection) ->
 	Message=lists:append(["DISCONNECT", "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
-	gen_tcp:close(Connection),
+	ssl:send(Connection,Message),
+	ssl:close(Connection),
 	ok.
 
 %% Example: stomp:get_message_id(Message).
@@ -109,7 +109,7 @@ ack (Connection, [Type, Headers, Body]) ->
 	ack(Connection, MessageId);
 ack (Connection, MessageId)	->
 	AckMessage=lists:append(["ACK", "\nmessage-id: ", MessageId, "\n\n", [0]]),
-	gen_tcp:send(Connection,AckMessage),
+	ssl:send(Connection,AckMessage),
 	ok.
 
 %% Example: stomp:ack(Conn, Message, TransactionId).
@@ -121,7 +121,7 @@ ack (Connection, [Type, Headers, Body], TransactionId) ->
 	ack(Connection, MessageId, TransactionId);
 ack (Connection, MessageId, TransactionId)	->
 	AckMessage=lists:append(["ACK", "\nmessage-id: ", MessageId, "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,AckMessage),
+	ssl:send(Connection,AckMessage),
 	ok.
 
 %% Example: stomp:send(Conn, "/queue/foobar", [], "hello world").
@@ -129,7 +129,8 @@ ack (Connection, MessageId, TransactionId)	->
 
 send (Connection, Destination, Headers, MessageBody) ->
 	Message=lists:append(["SEND", "\ndestination: ", Destination, concatenate_options(Headers), "\n\n", MessageBody, [0]]),
-	gen_tcp:send(Connection,Message).
+	ssl:send(Connection,Message),
+	ok.
 
 %% Example: stomp:get_messages(Conn).
 
@@ -166,7 +167,7 @@ do_recv(Connection, Timeout)->
     do_recv(Connection, [], Timeout).
 
 do_recv(Connection, Response, Timeout)->
-    R = gen_tcp:recv(Connection, 0, Timeout),
+    R = ssl:recv(Connection, 0, Timeout),
     case R of
     	{ok, Data}->
             Val = lists:member(0, Data),
@@ -193,14 +194,14 @@ on_message_with_conn (F, Conn) ->
 
 begin_transaction (Connection, TransactionId) ->
 	Message=lists:append(["BEGIN", "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+	ssl:send(Connection,Message),
 	ok.
 
 %% Example: stomp:commit_transaction(Conn, "MyUniqueTransactionIdBlahBlahBlah1234567890").
 
 commit_transaction (Connection, TransactionId) ->
 	Message=lists:append(["COMMIT", "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+	ssl:send(Connection,Message),
 	ok.
 
 
@@ -208,7 +209,7 @@ commit_transaction (Connection, TransactionId) ->
 
 abort_transaction (Connection, TransactionId) ->
 	Message=lists:append(["ABORT", "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+	ssl:send(Connection,Message),
 	ok.
 
 %% PRIVATE METHODS . . .
