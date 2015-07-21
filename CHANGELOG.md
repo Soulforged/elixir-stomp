@@ -1,3 +1,6 @@
+### 0.0.6
+* Handle tcp send error properly
+
 ### 0.0.5
 * Increase receiver buffer to a more standard initial capacity (65536)
 

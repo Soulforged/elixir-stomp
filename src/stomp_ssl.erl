@@ -129,8 +129,7 @@ ack (Connection, MessageId, TransactionId)	->
 
 send (Connection, Destination, Headers, MessageBody) ->
 	Message=lists:append(["SEND", "\ndestination: ", Destination, concatenate_options(Headers), "\n\n", MessageBody, [0]]),
-	ssl:send(Connection,Message),
-	ok.
+	ssl:send(Connection,Message).
 
 %% Example: stomp:get_messages(Conn).
 
