@@ -169,9 +169,9 @@ do_recv(Connection, Response, Timeout)->
     R = gen_tcp:recv(Connection, 0, Timeout),
     case R of
     	{ok, Data}->
-            Val = lists:member(0, Data),
+            Val = lists:last(Data),
             case Val of
-                true -> lists:flatten([Response, Data]);
+                10 -> lists:flatten([Response, Data]);
                 _ -> do_recv(Connection, lists:flatten([Response, Data]), Timeout)
             end;
     	{error, _} -> Response
@@ -180,12 +180,12 @@ do_recv(Connection, Response, Timeout)->
 %% Example: MyFunction=fun([_, _, {_, X}]) -> io:fwrite("message ~s ~n", [X]) end, stomp:on_message(MyFunction, Conn).
 
 on_message (F, Conn) ->
-	Messages=get_messages(Conn),
+	Messages=get_messages(Conn, infinity),
 	apply_function_to_messages(F, Messages),
 	on_message(F, Conn).
 
 on_message_with_conn (F, Conn) ->
-	Messages=get_messages(Conn),
+	Messages=get_messages(Conn, infinity),
 	apply_function_to_messages(F, Messages, Conn),
 	on_message_with_conn(F, Conn).
 

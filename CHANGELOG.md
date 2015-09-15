@@ -1,3 +1,6 @@
+### 0.0.7
+* Remove timeout on on_message
+
 ### 0.0.6
 * Handle tcp send error properly
 
