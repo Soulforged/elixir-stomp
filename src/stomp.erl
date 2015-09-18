@@ -169,9 +169,10 @@ do_recv(Connection, Response, Timeout)->
     R = gen_tcp:recv(Connection, 0, Timeout),
     case R of
     	{ok, Data}->
-            Val = lists:last(Data),
+            Rev = lists:reverse(Data),
+            Val = lists:sublist(Rev,1,2),
             case Val of
-                10 -> lists:flatten([Response, Data]);
+                [10,0] -> lists:flatten([Response, Data]);
                 _ -> do_recv(Connection, lists:flatten([Response, Data]), Timeout)
             end;
     	{error, _} -> Response

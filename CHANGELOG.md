@@ -1,3 +1,6 @@
+### 0.0.8
+* Fix message stream termination logic.
+
 ### 0.0.7
 * Remove timeout on on_message
 
