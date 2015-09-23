@@ -1,3 +1,6 @@
+### 0.0.9
+* Revert get_messages logic to upstream phase.
+
 ### 0.0.8
 * Fix message stream termination logic.
 

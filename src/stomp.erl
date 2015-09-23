@@ -134,24 +134,21 @@ send (Connection, Destination, Headers, MessageBody) ->
 %% Example: stomp:get_messages(Conn).
 
 get_messages (Connection) ->
-	get_messages (Connection, 1000).
+	get_messages (Connection, []).
 
-get_messages (Connection, Timeout) ->
-	get_messages (Connection, [], Timeout).
+get_messages (Connection, Messages) ->
+	Response = do_recv(Connection),
+    get_messages(Connection, Messages, Response).
 
-get_messages (Connection, Messages, Timeout) ->
-	Response = do_recv(Connection, Timeout),
-    get_messages(Connection, Messages, Response, Timeout).
-
-get_messages (_, Messages, [], _) ->
+get_messages (_, Messages, []) ->
 	Messages;
-get_messages (Connection, Messages, Response, Timeout) ->
+get_messages (Connection, Messages, Response) ->
     M = get_message(Response),
-    handle_message(M, Connection, Messages, Timeout).
+    handle_message(M, Connection, Messages).
 
-handle_message([{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
-    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
-handle_message(Error,_, _, _) ->
+handle_message([{type, Type}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages) ->
+    get_messages (Connection, lists:append(Messages, [[{type, Type}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest));
+handle_message(Error,_, _) ->
     {error, Error}.
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
@@ -162,31 +159,45 @@ get_rest([])->
 get_rest([_|TheRest])->
     TheRest.
 
-do_recv(Connection, Timeout)->
-    do_recv(Connection, [], Timeout).
+do_recv(Connection)->
+    do_recv(Connection,[]).
 
-do_recv(Connection, Response, Timeout)->
-    R = gen_tcp:recv(Connection, 0, Timeout),
-    case R of
-    	{ok, Data}->
-            Rev = lists:reverse(Data),
-            Val = lists:sublist(Rev,1,2),
-            case Val of
-                [10,0] -> lists:flatten([Response, Data]);
-                _ -> do_recv(Connection, lists:flatten([Response, Data]), Timeout)
-            end;
-    	{error, _} -> Response
+do_recv(Connection, [])->
+    {ok, Response}=gen_tcp:recv(Connection, 0),
+    do_recv(Connection, Response);
+do_recv(Connection, Response)->
+    {Status, Data}=gen_tcp:recv(Connection, 0, 100),
+    case Status of
+	ok->
+	    do_recv(Connection, lists:flatten([Response, Data]));
+	error -> Response
     end.
+
+% do_recv(Connection, Timeout)->
+%     do_recv(Connection, [], Timeout).
+%
+% do_recv(Connection, Response, Timeout)->
+%     R = gen_tcp:recv(Connection, 0, Timeout),
+%     case R of
+%     	{ok, Data}->
+%             Rev = lists:reverse(Data),
+%             Val = lists:sublist(Rev,1,2),
+%             case Val of
+%                 [10,0] -> lists:flatten([Response, Data]);
+%                 _ -> do_recv(Connection, lists:flatten([Response, Data]), Timeout)
+%             end;
+%     	{error, _} -> Response
+%     end.
 
 %% Example: MyFunction=fun([_, _, {_, X}]) -> io:fwrite("message ~s ~n", [X]) end, stomp:on_message(MyFunction, Conn).
 
 on_message (F, Conn) ->
-	Messages=get_messages(Conn, infinity),
+	Messages=get_messages(Conn),
 	apply_function_to_messages(F, Messages),
 	on_message(F, Conn).
 
 on_message_with_conn (F, Conn) ->
-	Messages=get_messages(Conn, infinity),
+	Messages=get_messages(Conn),
 	apply_function_to_messages(F, Messages, Conn),
 	on_message_with_conn(F, Conn).
 
