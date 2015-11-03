@@ -166,7 +166,7 @@ do_recv(Connection, [])->
     {ok, Response}=gen_tcp:recv(Connection, 0),
     do_recv(Connection, Response);
 do_recv(Connection, Response)->
-    {Status, Data}=gen_tcp:recv(Connection, 0, 100),
+    {Status, Data}=gen_tcp:recv(Connection, 0, 1000),
     case Status of
 	ok->
 	    do_recv(Connection, lists:flatten([Response, Data]));

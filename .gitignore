@@ -1,3 +1,5 @@
 .fetch
 .rebar
 ebin/
+rebar.lock
+_build/
