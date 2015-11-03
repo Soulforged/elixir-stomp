@@ -27,10 +27,10 @@
 
 %% Example:	Conn = stomp:connect("localhost", 61613, "", "").
 connect (Host, PortNo, Login, Passcode)  ->
-    connect(Host, PortNo, Login, Passcode, []).
+    connect(Host, PortNo, Login, Passcode, [], 1024).
 
 connect (Host, PortNo, Login, Passcode, Options)  ->
-    connect(Host, PortNo, Login, Passcode, Options, 65536).
+    connect(Host, PortNo, Login, Passcode, Options, 1024).
 
 connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
@@ -164,13 +164,26 @@ do_recv(Connection)->
 
 do_recv(Connection, [])->
     {ok, Response}=gen_tcp:recv(Connection, 0),
-    do_recv(Connection, Response);
-do_recv(Connection, Response)->
-    {Status, Data}=gen_tcp:recv(Connection, 0, 100),
+    do_recv(Connection, Response, 100).
+
+do_recv(Connection, Response, Timeout)->
+    {Status, Data}=gen_tcp:recv(Connection, 0, Timeout),
     case Status of
-	ok->
-	    do_recv(Connection, lists:flatten([Response, Data]));
-	error -> Response
+      ok->
+        Rev = lists:reverse(Data),
+        Val = lists:sublist(Rev,1,2),
+        NewList = lists:flatten([Response, Data]),
+        case Val of
+          [10,0] -> NewList;
+          _ -> do_recv(Connection, NewList, Timeout)
+        end;
+      error ->
+        Rev = lists:reverse(Response),
+        Val = lists:sublist(Rev,1,2),
+        case Val of
+          [10,0] -> Response;
+          _ -> do_recv(Connection, Response, Timeout)
+        end
     end.
 
 % do_recv(Connection, Timeout)->
