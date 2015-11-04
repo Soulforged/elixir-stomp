@@ -1,5 +1,5 @@
 ### 0.0.10
-* Revert improve get_messages logic to consider finished message before and after a possible timeout.
+* Re-adapt message delimitation logic to line packets and following STOMP spec.
 
 ### 0.0.9
 * Revert get_messages logic to upstream phase.
