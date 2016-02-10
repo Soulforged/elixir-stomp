@@ -25,6 +25,24 @@
 -export ([on_message/2]).
 -export ([on_message_with_conn/2]).
 
+tcp_module() ->
+  tcp_module(application:get_env(stomp, use_ssl, false)).
+
+tcp_module(true) -> ssl;
+tcp_module(_) -> gen_tcp.
+
+tcp_params(RecBuf) -> [{active, false},{buffer,RecBuf},{recbuf,RecBuf}, {packet,line},
+  {buffer,RecBuf},{recbuf,RecBuf}].
+
+tcp_params(ssl, RecBuf) -> verify_cert() ++ tcp_params(RecBuf);
+tcp_params(_, RecBuf) -> tcp_params(RecBuf).
+
+verify_cert() ->
+  verify_cert(application:get_env(stomp, ssl_insecure, true)).
+
+verify_cert(false) -> [{verify, verify_peer}];
+verify_cert(_) -> [{verify, verify_none}, {reuse_sessions, true}].
+
 %% Example:	Conn = stomp:connect("localhost", 61613, "", "").
 connect (Host, PortNo, Login, Passcode)  ->
   connect(Host, PortNo, Login, Passcode, [], 1024).
@@ -33,29 +51,34 @@ connect (Host, PortNo, Login, Passcode, Options)  ->
   connect(Host, PortNo, Login, Passcode, Options, 1024).
 
 connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
-	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode, concatenate_options(Options), "\n\n", [0]]),
-	Tcp=gen_tcp:connect(Host,PortNo,[{active, false},{buffer,RecBuf},{recbuf,RecBuf},{packet,line}]),
-    handle_tcp(Tcp, RecBuf, Message).
+	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode,
+    concatenate_options(Options), "\n\n", [0]]),
+  Mod = tcp_module(),
+	Tcp = Mod:connect(Host,PortNo, tcp_params(Mod, RecBuf)),
+  handle_tcp(Tcp, Message).
 
-handle_tcp({ok, Sock}, RecBuf, Message) ->
-  inet:setopts(Sock, [{buffer,RecBuf},{recbuf,RecBuf}]),
-  gen_tcp:send(Sock,Message),
-  {ok, Response}=gen_tcp:recv(Sock, 0),
+handle_tcp({ok, Sock}, Message) ->
+  Mod = tcp_module(),
+  Mod:send(Sock,Message),
+  {ok, Response}=Mod:recv(Sock, 0),
   M = get_message(Response),
   handle_message(M, Sock); %%UGLY!
-handle_tcp(Error,_, _) ->
+handle_tcp(Error, _) ->
   Error.
 
 handle_message([{type, Type}, Headers, _, _], Sock) ->
-  case (Type) of
-    "CONNECTED" ->
-      Sock;
-    _->
-      {headers, [_, {"message", Msg}]} = Headers,
-      {error, "Error occured during connection attempt. " ++ Msg}
-  end;
+  connection_case(Type, Headers, Sock);
 handle_message(Error, _) ->
   Error.
+
+connection_case("CONNECTED", _, Sock) -> Sock;
+connection_case(Type, {headers, [_, {"message", Msg}]}, _) ->
+  io:write(Type),
+  {error, "Error occured during connection attempt. " ++ Msg};
+connection_case(Type, {headers, []}, _) ->
+  io:write(Type),
+  {error, "The connection could not be started, please verify that server port
+    is open and you're using the proper transport"}.
 
 %% Example: stomp:subscribe("/queue/foobar", Conn).
 
@@ -68,8 +91,10 @@ subscribe (Destination, Connection) ->
 
 
 subscribe (Destination, Connection, Options) ->
-	Message=lists:append(["SUBSCRIBE", "\ndestination: ", Destination, concatenate_options(Options), "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+	Message=lists:append(["SUBSCRIBE", "\ndestination: ", Destination,
+    concatenate_options(Options), "\n\n", [0]]),
+  Mod = tcp_module(),
+	Mod:send(Connection,Message),
 	ok.
 
 
@@ -77,15 +102,17 @@ subscribe (Destination, Connection, Options) ->
 
 unsubscribe (Destination, Connection) ->
 	Message=lists:append(["UNSUBSCRIBE", "\ndestination: ", Destination, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+  Mod = tcp_module(),
+	Mod:send(Connection,Message),
 	ok.
 
 %% Example: stomp:disconnect(Conn).
 
 disconnect (Connection) ->
 	Message=lists:append(["DISCONNECT", "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
-	gen_tcp:close(Connection),
+  Mod = tcp_module(),
+	Mod:send(Connection,Message),
+	Mod:close(Connection),
 	ok.
 
 %% Example: stomp:get_message_id(Message).
@@ -109,7 +136,8 @@ ack (Connection, [Type, Headers, Body]) ->
 	ack(Connection, MessageId);
 ack (Connection, MessageId)	->
 	AckMessage=lists:append(["ACK", "\nmessage-id: ", MessageId, "\n\n", [0]]),
-	gen_tcp:send(Connection,AckMessage),
+  Mod = tcp_module(),
+	Mod:send(Connection,AckMessage),
 	ok.
 
 %% Example: stomp:ack(Conn, Message, TransactionId).
@@ -121,7 +149,8 @@ ack (Connection, [Type, Headers, Body], TransactionId) ->
 	ack(Connection, MessageId, TransactionId);
 ack (Connection, MessageId, TransactionId)	->
 	AckMessage=lists:append(["ACK", "\nmessage-id: ", MessageId, "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,AckMessage),
+  Mod = tcp_module(),
+	Mod:send(Connection,AckMessage),
 	ok.
 
 %% Example: stomp:send(Conn, "/queue/foobar", [], "hello world").
@@ -129,7 +158,8 @@ ack (Connection, MessageId, TransactionId)	->
 
 send (Connection, Destination, Headers, MessageBody) ->
 	Message=lists:append(["SEND", "\ndestination: ", Destination, concatenate_options(Headers), "\n\n", MessageBody, [0]]),
-	gen_tcp:send(Connection,Message).
+  Mod = tcp_module(),
+	Mod:send(Connection,Message).
 
 %% Example: stomp:get_messages(Conn).
 
@@ -169,13 +199,15 @@ do_recv(Connection)->
   do_recv(Connection,[]).
 
 do_recv(Connection, [])->
-  {ok, Response}=gen_tcp:recv(Connection, 0),
+  Mod = tcp_module(),
+  {ok, Response}=Mod:recv(Connection, 0),
   do_recv(Connection, Response);
 do_recv(Connection, Response)->
   case is_eof(Response) of
     true -> Response;
     _ ->
-      Res = gen_tcp:recv(Connection, 0),
+      Mod = tcp_module(),
+      Res = Mod:recv(Connection, 0),
       case Res of
         {ok, Data} -> do_recv(Connection, lists:flatten([Response, Data]));
         {error, _} -> do_recv(Connection, Response)
@@ -207,14 +239,16 @@ on_message_with_conn (F, Conn) ->
 
 begin_transaction (Connection, TransactionId) ->
 	Message=lists:append(["BEGIN", "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+  Mod = tcp_module(),
+	Mod:send(Connection,Message),
 	ok.
 
 %% Example: stomp:commit_transaction(Conn, "MyUniqueTransactionIdBlahBlahBlah1234567890").
 
 commit_transaction (Connection, TransactionId) ->
 	Message=lists:append(["COMMIT", "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+  Mod = tcp_module(),
+	Mod:send(Connection,Message),
 	ok.
 
 
@@ -222,7 +256,8 @@ commit_transaction (Connection, TransactionId) ->
 
 abort_transaction (Connection, TransactionId) ->
 	Message=lists:append(["ABORT", "\ntransaction: ", TransactionId, "\n\n", [0]]),
-	gen_tcp:send(Connection,Message),
+  Mod = tcp_module(),
+	Mod:send(Connection,Message),
 	ok.
 
 %% PRIVATE METHODS . . .
@@ -263,8 +298,8 @@ get_message_body ([H|T], MessageBody) ->
 	case(H) of
 		0 -> {MessageBody, T};
 		_ ->
-            {MyMessageBody, TheRest}=get_message_body(T, MessageBody),
-            {lists:append([MessageBody, [H], MyMessageBody]), TheRest}
+      {MyMessageBody, TheRest}=get_message_body(T, MessageBody),
+      {lists:append([MessageBody, [H], MyMessageBody]), TheRest}
 	end;
 get_message_body ([],[]) ->
   {[],[]}.

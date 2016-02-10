@@ -1,11 +1,8 @@
 {application, stomp,
  [
   {description, "A Stomp client in Erlang"},
-  {vsn, "0.0.10"},
+  {vsn, "0.1.0"},
   {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
+  {applications, [kernel, stdlib, ssl]},
   {env, []}
  ]}.

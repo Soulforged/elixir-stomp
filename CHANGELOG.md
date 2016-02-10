@@ -1,3 +1,6 @@
+### 0.1.0
+* Add ssl support.
+
 ### 0.0.10
 * Re-adapt message delimitation logic to line packets and following STOMP spec.
 
