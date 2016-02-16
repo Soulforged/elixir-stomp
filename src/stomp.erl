@@ -73,10 +73,8 @@ handle_message(Error, _) ->
 
 connection_case("CONNECTED", _, Sock) -> Sock;
 connection_case(Type, {headers, [_, {"message", Msg}]}, _) ->
-  io:write(Type),
   {error, "Error occured during connection attempt. " ++ Msg};
 connection_case(Type, {headers, []}, _) ->
-  io:write(Type),
   {error, "The connection could not be started, please verify that server port
     is open and you're using the proper transport"}.
 
