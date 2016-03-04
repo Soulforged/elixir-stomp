@@ -1,3 +1,6 @@
+### 0.2.0
+* Add timeout to get_messages.
+
 ### 0.1.0
 * Add ssl support.
 

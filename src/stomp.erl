@@ -72,9 +72,9 @@ handle_message(Error, _) ->
   Error.
 
 connection_case("CONNECTED", _, Sock) -> Sock;
-connection_case(Type, {headers, [_, {"message", Msg}]}, _) ->
+connection_case(_, {headers, [_, {"message", Msg}]}, _) ->
   {error, "Error occured during connection attempt. " ++ Msg};
-connection_case(Type, {headers, []}, _) ->
+connection_case(_, {headers, []}, _) ->
   {error, "The connection could not be started, please verify that server port
     is open and you're using the proper transport"}.
 
@@ -162,27 +162,30 @@ send (Connection, Destination, Headers, MessageBody) ->
 %% Example: stomp:get_messages(Conn).
 
 get_messages (Connection) ->
-	get_messages (Connection, []).
+	get_messages (Connection, 20000).
 
-get_messages (Connection, Messages) ->
-	Response = do_recv(Connection),
-  get_messages(Connection, Messages, Response).
+get_messages (Connection, Timeout) ->
+	get_messages (Connection, [], Timeout).
 
-get_messages (_, Messages, []) ->
+get_messages (Connection, Messages, Timeout) ->
+  Response = do_recv(Connection, Timeout),
+  get_messages(Connection, Messages, Response, Timeout).
+
+get_messages(_, Messages, [], _) ->
 	Messages;
-get_messages (Connection, Messages, Response) ->
+get_messages(Connection, Messages, Response, Timeout) ->
   M = get_message(Response),
-  handle_message(M, Connection, Messages).
+  handle_message(M, Connection, Messages, Timeout).
 
-handle_message([{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages) ->
-  get_messages (Connection, lists:append(Messages, [[{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest));
-handle_message([{type, "ERROR"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages) ->
-  get_messages (Connection, lists:append(Messages, [[{type, "ERROR"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest));
-handle_message([_, _, _, "\n"], Connection, _) ->
-  get_messages (Connection, []);
-handle_message([_, _, _, TheRest], Connection, Messages) ->
-  get_messages (Connection, Messages, get_rest(TheRest));
-handle_message(Error,_, _) ->
+handle_message([{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
+  get_messages (Connection, lists:append(Messages, [[{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
+handle_message([{type, "ERROR"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
+  get_messages (Connection, lists:append(Messages, [[{type, "ERROR"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
+handle_message([_, _, _, "\n"], Connection, _, Timeout) ->
+  get_messages (Connection, [], Timeout);
+handle_message([_, _, _, TheRest], Connection, Messages, Timeout) ->
+  get_messages (Connection, Messages, get_rest(TheRest), Timeout);
+handle_message(Error,_, _, _) ->
   {error, Error}.
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
@@ -193,22 +196,22 @@ get_rest([])->
 get_rest([_|TheRest])->
   TheRest.
 
-do_recv(Connection)->
-  do_recv(Connection,[]).
+do_recv(Connection, Timeout)->
+  do_recv(Connection, [], Timeout).
 
-do_recv(Connection, [])->
+do_recv(Connection, [], Timeout)->
   Mod = tcp_module(),
-  {ok, Response}=Mod:recv(Connection, 0),
-  do_recv(Connection, Response);
-do_recv(Connection, Response)->
+  {ok, Response} = Mod:recv(Connection, 0, Timeout),
+  do_recv(Connection, Response, Timeout);
+do_recv(Connection, Response, Timeout)->
   case is_eof(Response) of
     true -> Response;
     _ ->
       Mod = tcp_module(),
-      Res = Mod:recv(Connection, 0),
+      Res = Mod:recv(Connection, 0, Timeout),
       case Res of
-        {ok, Data} -> do_recv(Connection, lists:flatten([Response, Data]));
-        {error, _} -> do_recv(Connection, Response)
+        {ok, Data} -> do_recv(Connection, lists:flatten([Response, Data]), Timeout);
+        {error, _} -> do_recv(Connection, Response, Timeout)
       end
   end.
 
@@ -224,12 +227,12 @@ is_eof(_) ->
 %% Example: MyFunction=fun([_, _, {_, X}]) -> io:fwrite("message ~s ~n", [X]) end, stomp:on_message(MyFunction, Conn).
 
 on_message (F, Conn) ->
-	Messages=get_messages(Conn),
+	Messages=get_messages(Conn, infinity),
 	apply_function_to_messages(F, Messages),
 	on_message(F, Conn).
 
 on_message_with_conn (F, Conn) ->
-	Messages=get_messages(Conn),
+	Messages=get_messages(Conn, infinity),
 	apply_function_to_messages(F, Messages, Conn),
 	on_message_with_conn(F, Conn).
 
@@ -301,8 +304,6 @@ get_message_body ([H|T], MessageBody) ->
 	end;
 get_message_body ([],[]) ->
   {[],[]}.
-
-
 
 %% extract headers as a blob of chars, after having iterated over . . .
 
