@@ -31,8 +31,7 @@ tcp_module() ->
 tcp_module(true) -> ssl;
 tcp_module(_) -> gen_tcp.
 
-tcp_params(RecBuf) -> [{active, false},{buffer,RecBuf},{recbuf,RecBuf}, {packet,line},
-  {buffer,RecBuf},{recbuf,RecBuf}].
+tcp_params(RecBuf) -> [{active, false}, {packet,line},{buffer,RecBuf},{recbuf,RecBuf}].
 
 tcp_params(ssl, RecBuf) -> verify_cert() ++ tcp_params(RecBuf);
 tcp_params(_, RecBuf) -> tcp_params(RecBuf).
@@ -157,12 +156,12 @@ ack (Connection, MessageId, TransactionId)	->
 send (Connection, Destination, Headers, MessageBody) ->
 	Message=lists:append(["SEND", "\ndestination: ", Destination, concatenate_options(Headers), "\n\n", MessageBody, [0]]),
   Mod = tcp_module(),
-	Mod:send(Connection,Message).
+	Mod:send(Connection, unicode:characters_to_binary(Message)).
 
 %% Example: stomp:get_messages(Conn).
 
 get_messages (Connection) ->
-	get_messages (Connection, 20000).
+	get_messages (Connection, 5000).
 
 get_messages (Connection, Timeout) ->
 	get_messages (Connection, [], Timeout).
@@ -208,11 +207,8 @@ do_recv(Connection, Response, Timeout)->
     true -> Response;
     _ ->
       Mod = tcp_module(),
-      Res = Mod:recv(Connection, 0, Timeout),
-      case Res of
-        {ok, Data} -> do_recv(Connection, lists:flatten([Response, Data]), Timeout);
-        {error, _} -> do_recv(Connection, Response, Timeout)
-      end
+      {ok, Data} = Mod:recv(Connection, 0, Timeout),
+      do_recv(Connection, lists:flatten([Response, Data]), Timeout)
   end.
 
 is_eof([_ | [0, 10]]) ->
@@ -227,12 +223,12 @@ is_eof(_) ->
 %% Example: MyFunction=fun([_, _, {_, X}]) -> io:fwrite("message ~s ~n", [X]) end, stomp:on_message(MyFunction, Conn).
 
 on_message (F, Conn) ->
-	Messages=get_messages(Conn, infinity),
+	Messages=get_messages(Conn),
 	apply_function_to_messages(F, Messages),
 	on_message(F, Conn).
 
 on_message_with_conn (F, Conn) ->
-	Messages=get_messages(Conn, infinity),
+	Messages=get_messages(Conn),
 	apply_function_to_messages(F, Messages, Conn),
 	on_message_with_conn(F, Conn).
 

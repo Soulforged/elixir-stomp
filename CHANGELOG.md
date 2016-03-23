@@ -1,3 +1,6 @@
+### 0.2.1
+* Convert whole message to unicode.
+
 ### 0.2.0
 * Add timeout to get_messages.
 
