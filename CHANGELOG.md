@@ -1,3 +1,6 @@
+### 0.2.2
+* Eliminate heartbeat from message.
+
 ### 0.2.1
 * Convert whole message to unicode.
 

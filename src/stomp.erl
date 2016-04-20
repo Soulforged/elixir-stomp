@@ -8,7 +8,6 @@
 -module (stomp).
 -export ([connect/4]). %% "You sunk my scrabbleship!"
 -export ([connect/5]).
--export ([connect/6]).
 -export ([disconnect/1]).
 -export ([subscribe/2]).
 -export ([subscribe/3]).
@@ -31,10 +30,10 @@ tcp_module() ->
 tcp_module(true) -> ssl;
 tcp_module(_) -> gen_tcp.
 
-tcp_params(RecBuf) -> [{active, false}, {packet,line},{buffer,RecBuf},{recbuf,RecBuf}].
+tcp_params() -> [{active, false}].
 
-tcp_params(ssl, RecBuf) -> verify_cert() ++ tcp_params(RecBuf);
-tcp_params(_, RecBuf) -> tcp_params(RecBuf).
+tcp_params(ssl) -> verify_cert() ++ tcp_params();
+tcp_params(_) -> tcp_params().
 
 verify_cert() ->
   verify_cert(application:get_env(stomp, ssl_insecure, true)).
@@ -44,16 +43,13 @@ verify_cert(_) -> [{verify, verify_none}, {reuse_sessions, true}].
 
 %% Example:	Conn = stomp:connect("localhost", 61613, "", "").
 connect (Host, PortNo, Login, Passcode)  ->
-  connect(Host, PortNo, Login, Passcode, [], 1024).
+  connect(Host, PortNo, Login, Passcode, []).
 
 connect (Host, PortNo, Login, Passcode, Options)  ->
-  connect(Host, PortNo, Login, Passcode, Options, 1024).
-
-connect (Host, PortNo, Login, Passcode, Options, RecBuf)  ->
 	Message=lists:append(["CONNECT", "\nlogin: ", Login, "\npasscode: ", Passcode,
     concatenate_options(Options), "\n\n", [0]]),
   Mod = tcp_module(),
-	Tcp = Mod:connect(Host,PortNo, tcp_params(Mod, RecBuf)),
+	Tcp = Mod:connect(Host,PortNo, tcp_params(Mod)),
   handle_tcp(Tcp, Message).
 
 handle_tcp({ok, Sock}, Message) ->
@@ -204,16 +200,21 @@ do_recv(Connection, [], Timeout)->
   do_recv(Connection, Response, Timeout);
 do_recv(Connection, Response, Timeout)->
   case is_eof(Response) of
-    true -> Response;
+    true ->
+      case Response of
+        [10|Rest] -> Rest;
+        _ -> Response
+      end;
     _ ->
       Mod = tcp_module(),
       {ok, Data} = Mod:recv(Connection, 0, Timeout),
-      do_recv(Connection, lists:flatten([Response, Data]), Timeout)
+      case Data of
+        [10] -> do_recv(Connection, Response, Timeout);
+        _ -> do_recv(Connection, lists:flatten([Response, Data]), Timeout)
+      end
   end.
 
 is_eof([_ | [0, 10]]) ->
-  true;
-is_eof([_ | [0]]) ->
   true;
 is_eof([_ | T]) ->
   is_eof(T);
@@ -327,7 +328,7 @@ get_type ([], Type) ->
 	Type;
 get_type ([H|T], Type) ->
 	case (H) of
-		10 -> [{Headers, MessageBody}, TheRest]=get_headers(T), [Type, {Headers, MessageBody}, TheRest];
+		10 -> [{Headers, MessageBody}, TheRest] = get_headers(T), [Type, {Headers, MessageBody}, TheRest];
 		_ -> get_type(T, lists:append([Type, [H]]))
 	end;
 get_type (Error, _) ->
