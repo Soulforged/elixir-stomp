@@ -201,10 +201,7 @@ do_recv(Connection, [], Timeout)->
 do_recv(Connection, Response, Timeout)->
   case is_eof(Response) of
     true ->
-      case Response of
-        [10|Rest] -> Rest;
-        _ -> Response
-      end;
+      re:replace(Response, "(^\\s+)|(\\s+$)", "", [global,{return,list}]);
     _ ->
       Mod = tcp_module(),
       {ok, Data} = Mod:recv(Connection, 0, Timeout),
