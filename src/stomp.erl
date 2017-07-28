@@ -176,12 +176,18 @@ handle_message([{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}, TheR
   get_messages (Connection, lists:append(Messages, [[{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
 handle_message([{type, "ERROR"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
   get_messages (Connection, lists:append(Messages, [[{type, "ERROR"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
-handle_message([_, _, _, "\n"], Connection, _, Timeout) ->
+handle_message(Response, [_, _, _, "\n"], Connection, _, Timeout) ->
+  log_error(Response),
   get_messages (Connection, [], Timeout);
-handle_message([_, _, _, TheRest], Connection, Messages, Timeout) ->
+handle_message(Response, [_, _, _, TheRest], Connection, Messages, Timeout) ->
+  log_error(Response),
   get_messages (Connection, Messages, get_rest(TheRest), Timeout);
-handle_message(Error,_, _, _) ->
+handle_message(Response, Error,_, _, _) ->
+  log_error(Response),
   {error, Error}.
+
+log_error(Response) ->
+  error_logger:error_msg("Stomp message error ~P~n", [Response, 1000]).
 
 %% U.G.L.Y. . . .  you ain't got no alibi.
 %% 6/24/11 I think the rest is when more than one message is retrived at at given time...in any case, looks like large messages are sometimes missing an expected terminationg 0 char?
@@ -189,7 +195,7 @@ handle_message(Error,_, _, _) ->
 get_rest([])->
   [];
 get_rest([_|TheRest])->
-  TheRest.
+  ltrim(TheRest).
 
 do_recv(Connection, Timeout)->
   do_recv(Connection, [], Timeout).
@@ -201,7 +207,7 @@ do_recv(Connection, [], Timeout)->
 do_recv(Connection, Response, Timeout)->
   case is_eof(Response) of
     true ->
-      re:replace(Response, "(^\\s+)|(\\s+$)", "", [global,{return,list}]);
+      ltrim(Response);
     _ ->
       Mod = tcp_module(),
       {ok, Data} = Mod:recv(Connection, 0, Timeout),
@@ -217,6 +223,11 @@ is_eof([_ | T]) ->
   is_eof(T);
 is_eof(_) ->
   false.
+
+ltrim([10 | T]) ->
+  ltrim(T);
+ltrim(T) ->
+  T.
 
 %% Example: MyFunction=fun([_, _, {_, X}]) -> io:fwrite("message ~s ~n", [X]) end, stomp:on_message(MyFunction, Conn).
 
