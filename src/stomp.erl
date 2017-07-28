@@ -170,11 +170,11 @@ get_messages(_, Messages, [], _) ->
 	Messages;
 get_messages(Connection, Messages, Response, Timeout) ->
   M = get_message(Response),
-  handle_message(M, Connection, Messages, Timeout).
+  handle_message(Response, M, Connection, Messages, Timeout).
 
-handle_message([{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
+handle_message(_,[{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
   get_messages (Connection, lists:append(Messages, [[{type, "MESSAGE"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
-handle_message([{type, "ERROR"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
+handle_message(_,[{type, "ERROR"}, {headers, Headers}, {body, MessageBody}, TheRest], Connection, Messages, Timeout) ->
   get_messages (Connection, lists:append(Messages, [[{type, "ERROR"}, {headers, Headers}, {body, MessageBody}]]), get_rest(TheRest), Timeout);
 handle_message(Response, [_, _, _, "\n"], Connection, _, Timeout) ->
   log_error(Response),
